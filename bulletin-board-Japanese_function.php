@@ -1,6 +1,7 @@
 <?php
-$LogTable = "logfile";//ログを記録するテーブル
+$LogTable = "logfile6_2_1";//ログを記録するテーブル
 $D_Prevent = "rand";//二重送信防止用のテーブル
+$imagefile = "picture/";
 
 //データベースへ接続
 $dsn = 'mysql:dbname=********;host=********';//Data Source Name
@@ -9,8 +10,8 @@ $password = '********';
 $pdo = new PDO($dsn, $user, $password, array(PDO::ATTR_ERRMODE => PDO::ERRMODE_WARNING));//PHP Data Objects
 
 //コメント用のテーブルの作成
-$sql = "CREATE TABLE IF NOT EXISTS {$LogTable} (id INT AUTO_INCREMENT PRIMARY KEY, name char(32), dat char(32), editdat char(32), comment TEXT, pass char(32));";
-$state = $pdo->query($sql);//コメントid,ユーザーname,投稿した日付,最後に編集した日付,コメント内容,パスワード
+$sql = "CREATE TABLE IF NOT EXISTS {$LogTable} (id INT AUTO_INCREMENT PRIMARY KEY, name char(32), dat char(32), editdat char(32), comment TEXT, imagepath char(70), pass char(32));";
+$state = $pdo->query($sql);//コメントid,ユーザーname,投稿した日付,最後に編集した日付,コメント内容,画像のパス,パスワード
 
 
 //コメントidのリンクから、GETでidを取得(show関数)
@@ -46,15 +47,16 @@ $state = $pdo->query($sql);//コメントid,ユーザーname,投稿した日付,
         if($pass_auth["result"]){//パスワードが合致した場合
           $message[] = $pass_auth["message"];//メッセージを追加
           //値の取得
-          $sql = $pdo->prepare("SELECT * FROM logfile WHERE id=:editid");
+          $sql = $pdo->prepare("SELECT * FROM {$LogTable} WHERE id=:editid");
           $sql->bindParam(":editid", $inputid, PDO::PARAM_INT);
           $sql->execute();
           $result = $sql->fetch();
           //値の差し替え、投稿内容を配列に入れる。
-          $display = [ "id" => $result["id"],
-                     "name" => $result["name"],
-                     "pass" => $result["pass"],
-                     "comment" => $result["comment"], ];
+          $display = [  "id" => $result["id"],
+                        "name" => $result["name"],
+                        "pass" => $result["pass"],
+                        "comment" => $result["comment"],
+                        "imagepath" => $result["imagepath"], ];
           $submit_value = $config;
 
         }else{//パスワードが合致しなかった場合
@@ -133,7 +135,7 @@ function pass_auth($pdo, $table, $pass, $editid){//PDOインスタンス、テ�
 
 
 //データレコードの変更用関数
-function editdata($pdo, $table){//PDOインスタンス、テーブル名
+function editdata($pdo, $table, $imagefile){//PDOインスタンス、テーブル名
   /*$_POST["submit"]の値にによって分岐する
     入力された値に対してバリデーションを行う
     空欄があった場合は処理をキャンセルし、もう一度入力させる
@@ -146,8 +148,31 @@ function editdata($pdo, $table){//PDOインスタンス、テーブル名
     $date = date("d/m/y H:i:s(D)");//日付の取得
     $input = false;//正しく入力したかを確認するパラメータの初期化
 
+    //画像のパスの作成
+    if(isset($_POST["imageedit"])){
+      if($_POST["imageedit"]=="変更"){
+        if(!empty($_FILES["image"]["name"])){//ファイルが選択されていれば処理を行う
+
+          $imagename = uniqid(mt_rand(), true);//名前の生成
+          $imagename .= '.' . substr(strrchr($_FILES['image']['name'], '.'), 1);//ファイルの拡張子を取得
+          $imagepath = $imagefile.$imagename;
+
+          move_uploaded_file($_FILES['image']['tmp_name'], $imagepath);//imagesディレクトリにファイル保存
+          if(file_exists($imagepath)){
+            if (exif_imagetype($imagepath)) {//画像ファイルかのチェック
+                echo '画像をアップロードしました<br>';
+            } else {
+                echo '画像ファイルではありません、表示できません。<br>';
+                $imagepath = "";
+            }
+          }
+        }else $imagepath = "";
+      }else $imagepath = $_POST["posted_image"];
+    }else $imagepath = "";
+
     //$submitの値に対する分岐
     if($submit!="申請"){//申請時以外の時、入力した値を受け取り、分岐する
+
       //値のバリデーション(全角スペースを削除)
       if(trim($_POST["name"], " \n\r\t\v\0　")==""){//名前の取得(空欄の時名無しに変更)
           $name = "名無しさん";
@@ -159,33 +184,39 @@ function editdata($pdo, $table){//PDOインスタンス、テーブル名
       }else $pass = $_POST["pass"];//前後のスペース等は消去
 
       if(trim($_POST["comment"], " \n\r\t\v\0　")==""){//コメント内容(空欄の時キャンセル)
-        echo "コメントが入力されていません。<br>";
-        $input = true;
+        if($imagepath==""){//画像の投稿がない場合
+          echo "コメントが入力されていません。<br>";
+          $input = true;
+        }else $comment = rtrim($_POST["comment"], " \n\r\t\v\0　");//画像の登録があった場合は空欄を許可する
+
       }else $comment = rtrim($_POST["comment"], " \n\r\t\v\0　");
 
       if($input){//正しく入力されていなかった場合、最初から入力させる。
         echo "もう一度正しく入力してください。<br>";//エラーメッセージを表示しそれ以外の処理は行わない
 
       }else{//正しく入力されていた場合
+
         //データレコードの変更
         if($submit=="投稿"){//投稿ボタンを押したとき、ただの書き込み
-          $sql = $pdo -> prepare("INSERT INTO {$table} (name, dat, comment, pass) VALUES (:name, :dat, :comment, :pass)");
+          $sql = $pdo -> prepare("INSERT INTO {$table} (name, dat, comment, imagepath, pass) VALUES (:name, :dat, :comment, :imagepath, :pass)");
           $sql->bindParam(':name', $name, PDO::PARAM_STR);
           $sql->bindParam(':dat', $date, PDO::PARAM_STR);
           $sql->bindParam(':comment', $comment, PDO::PARAM_STR);
+          $sql->bindParam(':imagepath', $imagepath, PDO::PARAM_STR);
           $sql->bindParam(':pass', $pass, PDO::PARAM_STR);
           $sql->execute();
-          echo "コメントを投稿しました。<br>";
+          echo "投稿しました。<br>";
 
         }elseif($submit=="編集"){//編集ボタンを押したとき、内容の更新
           $editid = $_POST["editid"];//編集番号
           $inputpass = $_POST["inputpass"];//入力されたパスワード
           $pass_auth = pass_auth($pdo, $table, $inputpass, $editid);//パスワード判定
           if($pass_auth["result"]){//結果で分岐
-            $sql = $pdo->prepare("UPDATE {$table} SET name=:name, editdat=:editdat, comment=:comment, pass=:pass WHERE id=:editid;");
+            $sql = $pdo->prepare("UPDATE {$table} SET name=:name, editdat=:editdat, comment=:comment, imagepath=:imagepath, pass=:pass WHERE id=:editid;");
             $sql->bindParam(':name', $name, PDO::PARAM_STR);
             $sql->bindParam(':editdat', $date, PDO::PARAM_STR);
             $sql->bindParam(':comment', $comment, PDO::PARAM_STR);
+            $sql->bindParam(':imagepath', $imagepath, PDO::PARAM_STR);
             $sql->bindParam(':pass', $pass, PDO::PARAM_STR);
             $sql->bindParam(':editid', $editid, PDO::PARAM_INT);
             $sql->execute();
@@ -212,12 +243,13 @@ function editdata($pdo, $table){//PDOインスタンス、テーブル名
 
 
 //表示用関数
-function show($pdo, $table, $filename){//PDOインスタンス、テーブル名、実行しているファイル名の指定
+function show($pdo, $table, $filename, $imagefile){//PDOインスタンス、テーブル名、実行しているファイル名、画像フォルダの指定
   /*リンククリックの値はGETのgetidに入れる
     idのみリンクで表示、名前とコメントはエスケープ処理を行う
     更にコメントは改行を入れて表示させる
     *変数以外でメイン側から行う処理なし
-    返り値なし*/
+    返り値なし
+    表示されない画像を削除するための関数remove_image()を呼び出す*/
 
   //値の取得
   $sql = $pdo->prepare("SELECT * FROM ".$table);
@@ -225,6 +257,7 @@ function show($pdo, $table, $filename){//PDOインスタンス、テーブル名
   $sql->execute();
   $result = $sql->fetchall();
   $logdata = array_reverse($result);//配列を逆順にし、表示の際最新のコメントがフォームの直後に来るようにする
+  $image_array = array();//表示した画像のパスの配列
 
   //値の表示
   echo "<hr><hr>";
@@ -240,7 +273,28 @@ function show($pdo, $table, $filename){//PDOインスタンス、テーブル名
       }
 
     echo nl2br(htmlspecialchars($log["comment"]))."<br>";//コメントは改行を入れて表示
+
+    if(file_exists($log["imagepath"])):
+      if(exif_imagetype($log["imagepath"]))://画像ファイルかのチェック
+        $image_array[] = $log["imagepath"];?>
+        <img src="<?=$log["imagepath"]?>" height="400">
+<?php endif;
+    endif;
+
     echo "<hr>";//コメントごとにラインを挿入
+  }
+
+  remove_image($image_array, $imagefile);
+}
+
+
+//削除された画像ファイルの削除
+/*投稿された画像ファイルのうち、表示されるもの以外を削除する。*/
+function remove_image($image_array, $imagefile){
+  $diff = array_diff(glob($imagefile."*"), $image_array);//画像フォルダのうち、表示されていないファイルを割り出す。
+
+  foreach($diff as $di){
+    unlink($di);//表示されていないものを削除する。
   }
 }
 ?>
