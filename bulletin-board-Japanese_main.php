@@ -6,7 +6,7 @@
 </head>
 
 <?php
-include "Simple-bulletin-board-Japanese_function.php";
+include "bulletin-board-Japanese_function.php";
 //ユーザー定義関数の呼び出し
 $reload = reload($pdo, $D_Prevent);//リロードの検出
 ?>
