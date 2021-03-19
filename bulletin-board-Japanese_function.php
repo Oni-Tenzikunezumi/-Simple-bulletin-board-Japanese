@@ -1,7 +1,7 @@
 <?php
-$LogTable = "logfile6_2_1";//ログを記録するテーブル
-$D_Prevent = "rand";//二重送信防止用のテーブル
-$imagefile = "picture/";
+$LogTable = "logfile";//ログを記録するテーブル名
+$D_Prevent = "rand";//二重送信防止用のテーブル名
+$imagefile = "picture/";//画像投稿用のディレクトリ名
 
 //データベースへ接続
 $dsn = 'mysql:dbname=********;host=********';//Data Source Name
